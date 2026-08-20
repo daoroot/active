@@ -17,10 +17,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Prepare public dir
+        run: |
+          mkdir -p public
+          # 只复制需要发布的文件到 public，避免上传整个仓库
+          if [ -f activate.html ]; then
+            cp activate.html public/
+          fi
+          echo "Public dir contents:"
+          ls -la public || true
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v1
         with:
-          path: '.'
+          path: public
 
   deploy:
     needs: build
