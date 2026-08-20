@@ -15,5 +15,25 @@
     <div>激活码：</div>
     <div class="code">123456789987654</div>
   </div>
+
+  <script>
+    // 基础激活码
+    (function(){
+      const baseCode = '123456789987654';
+      try {
+        const params = new URLSearchParams(window.location.search);
+        let append = '';
+        // 按传入参数的顺序拼接所有参数值（不包含参数名）
+        for (const value of params.values()) {
+          append += decodeURIComponent(value);
+        }
+        const el = document.querySelector('.code');
+        el.textContent = baseCode + append;
+      } catch (e) {
+        // 发生错误时保留基础激活码
+        console.error('处理查询参数时出错', e);
+      }
+    })();
+  </script>
 </body>
 </html>
