@@ -1,38 +1,127 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>激活码</title>
   <style>
-    body{display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:Arial, sans-serif;background:#f7f7f7}
-    .card{padding:2rem 3rem;background:#fff;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.08);font-size:1.5rem}
-    .code{font-weight:700;color:#e63946;font-size:2rem;letter-spacing:2px;margin-top:0.5rem;text-align:center}
+    body{display:flex;align-items:center;justify-content:center;flex-direction:column;height:100vh;margin:0;font-family:Arial, sans-serif;background:#f7f7f7}
+    .card{padding:2rem 3rem;background:#fff;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.08);text-align:center;max-width:720px;width:100%}
+    .title{font-size:1.25rem;margin-bottom:0.5rem;color:#222}
+    .code{font-weight:700;color:#1e88e5;font-size:2rem;letter-spacing:2px;margin-top:0.5rem}
+    .qr{margin:18px auto}
+    .meta{color:#9aa0a6;margin-top:12px;font-size:0.95rem;line-height:1.8}
+    .small-dash{border-top:1px dashed #ddd;margin:12px 0 0}
   </style>
 </head>
 <body>
-  <div class="card">
-    <div>激活码：</div>
-    <div class="code">123456789987654</div>
+  <div class="card" id="card">
+    <div class="title">请将下面的激活码输入仪器：</div>
+    <div class="code" id="activationCode">--</div>
+
+    <div class="qr" id="qrContainer">
+      <!-- QR image will be inserted here -->
+    </div>
+
+    <div class="meta" id="metaInfo">
+      <div>适配仪器：<span id="insn">-</span></div>
+      <div>适配耗材：<span id="mat">-</span></div>
+      <div>操作时间：<span id="ts">-</span></div>
+    </div>
+
+    <div class="small-dash"></div>
   </div>
 
   <script>
-    // 基础激活码
-    (function(){
-      const baseCode = '123456789987654';
-      try {
-        const params = new URLSearchParams(window.location.search);
-        let append = '';
-        // 按传入参数的顺序拼接所有参数值（不包含参数名）
-        for (const value of params.values()) {
-          append += decodeURIComponent(value);
-        }
-        const el = document.querySelector('.code');
-        el.textContent = baseCode + append;
-      } catch (e) {
-        // 发生错误时保留基础激活码
-        console.error('处理查询参数时出错', e);
+    // utility: format date
+    function formatDate(d){
+      const pad = n => String(n).padStart(2,'0');
+      return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    }
+
+    // compute sha-1 hex via Web Crypto API (returns hex string)
+    async function sha1Hex(str){
+      const enc = new TextEncoder().encode(str);
+      const hash = await crypto.subtle.digest('SHA-1', enc);
+      const arr = Array.from(new Uint8Array(hash));
+      return arr.map(b => b.toString(16).padStart(2,'0')).join('');
+    }
+
+    (async function(){
+      const params = new URLSearchParams(window.location.search);
+      const ri = (params.get('ri') || '').trim();
+      const st = (params.get('st') || '').trim();
+      const wt = (params.get('wt') || '').trim();
+      const insnParam = params.get('insn'); // optional explicit instrument number
+      const matParam = params.get('mat');   // optional explicit material number
+
+      // If ri missing, show placeholder
+      if(!ri){
+        document.getElementById('activationCode').textContent = '缺少 ri 参数';
+        document.getElementById('insn').textContent = insnParam || '-';
+        document.getElementById('mat').textContent = matParam || '-';
+        document.getElementById('ts').textContent = formatDate(new Date());
+        return;
       }
+
+      // deterministic activation code: sha1(ri+st+wt) -> take first 18 hex chars
+      const combined = ri + '|' + st + '|' + wt;
+      let hashHex = '';
+      try {
+        hashHex = await sha1Hex(combined);
+      } catch(e){
+        // fall back: simple hex from ri substring
+        hashHex = (ri.replace(/[^0-9a-fA-F]/g,'') || '00').slice(0,40);
+      }
+      const code18 = hashHex.slice(0,18).toUpperCase();
+
+      // format into groups 4-4-4-4-2
+      const groups = [
+        code18.slice(0,4),
+        code18.slice(4,8),
+        code18.slice(8,12),
+        code18.slice(12,16),
+        code18.slice(16,18)
+      ].join(' ');
+
+      document.getElementById('activationCode').textContent = groups;
+
+      // QR: point to this same page (include query params)
+      const pageURL = window.location.href;
+      const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(pageURL);
+      const img = document.createElement('img');
+      img.src = qrUrl;
+      img.alt = 'QR';
+      img.width = 200;
+      img.height = 200;
+      const qrContainer = document.getElementById('qrContainer');
+      qrContainer.appendChild(img);
+
+      // Show instrument / material numbers:
+      // Priority: explicit insn/mat params -> else derive from ri (simple deterministic conversion)
+      function deriveNumberFromHex(hexStr, lengthDigits){
+        // take first 8 hex chars (or less), parse int, modulo to cap size
+        const h = (hexStr || '').replace(/[^0-9a-fA-F]/g,'').slice(0,8) || '0';
+        const val = parseInt(h,16) || 0;
+        // produce an 8-digit-ish decimal string (similar to your screenshot style)
+        return String(val % 100000000).padStart(8,'0');
+      }
+
+      document.getElementById('insn').textContent = insnParam || deriveNumberFromHex(ri,8);
+      document.getElementById('mat').textContent = matParam || deriveNumberFromHex(ri.slice(-8),8);
+
+      document.getElementById('ts').textContent = formatDate(new Date());
+
+      // optional: if you want to copy code to clipboard on click
+      document.getElementById('activationCode').style.cursor = 'pointer';
+      document.getElementById('activationCode').title = '点击复制激活码';
+      document.getElementById('activationCode').addEventListener('click', function(){
+        navigator.clipboard?.writeText(groups).then(()=> {
+          const old = this.textContent;
+          this.textContent = '已复制: ' + groups;
+          setTimeout(()=> this.textContent = groups, 1500);
+        }).catch(()=>{});
+      });
     })();
   </script>
 </body>
