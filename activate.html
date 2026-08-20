@@ -9,38 +9,34 @@
     .card{padding:2rem 3rem;background:#fff;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.08);text-align:center;max-width:720px;width:100%}
     .title{font-size:1.25rem;margin-bottom:0.5rem;color:#222}
     .code{font-weight:700;color:#1e88e5;font-size:2rem;letter-spacing:2px;margin-top:0.5rem}
-    .sub{color:#666;font-size:0.95rem;margin-top:8px}
+    .hint{font-size:0.9rem;color:#999;margin-top:6px}
     .qr{margin:18px auto}
     .meta{color:#9aa0a6;margin-top:12px;font-size:0.95rem;line-height:1.8}
     .small-dash{border-top:1px dashed #ddd;margin:12px 0 0}
-    .hint{font-size:0.85rem;color:#999;margin-top:6px}
-    .muted{color:#888}
-    button.copy{margin-left:8px;padding:4px 8px;border-radius:4px;border:1px solid #ddd;background:#fafafa;cursor:pointer}
+    .sub{color:#666;font-size:0.9rem;margin-top:8px}
   </style>
 </head>
 <body>
   <div class="card" id="card">
     <div class="title">请将下面的激活码输入仪器：</div>
 
-    <div class="code" id="activationCode">--</div>
-    <div class="hint">（点击激活码可复制）</div>
+    <div class="code" id="activationCode">-</div>
+    <div class="hint">(点击激活码可复制)</div>
 
     <div class="qr" id="qrContainer"></div>
 
     <div class="meta" id="metaInfo">
-      <div>设备 SN：<span id="snDisplay" class="muted">-</span></div>
-      <div>耗材 code：<span id="codeDisplay" class="muted">-</span></div>
-      <div>ri：<span id="riDisplay" class="muted">-</span></div>
-      <div>st：<span id="stDisplay" class="muted">-</span> &nbsp; wt：<span id="wtDisplay" class="muted">-</span></div>
-      <div>操作时间：<span id="tsDisplay" class="muted">-</span></div>
+      <div>设备 SN：<span id="snDisplay">-</span></div>
+      <div>耗材 code：<span id="codeDisplay">-</span></div>
+      <div>操作时间：<span id="tsDisplay">-</span></div>
     </div>
 
     <div class="small-dash"></div>
-    <div class="sub">支持参数：sn, code, ri（可选直接传 ri）, st（默认 00）, wt（随机或传入）</div>
+    <div class="sub">支持参数：sn, code, ri（可选直接传 ri），st（默认 00），wt（随机或传入）</div>
   </div>
 
   <script>
-    // helpers: date format
+    // 格式化时间
     function formatDate(d){
       const pad = n => String(n).padStart(2,'0');
       return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
@@ -65,14 +61,14 @@
       return bytesToHexUpper(digest);
     }
 
-    // generate ri per Java: RI = first 26 hex chars of SHA256(sn + '|' + code), uppercase
+    // 生成 ri（与 Java 算法一致）：SHA256(sn + '|' + code) 的前 26 个 hex（大写）
     async function generateRiFromSnCode(sn, code){
       const combined = (sn || '') + '|' + (code || '');
       const hash = await sha256HexUpper(combined);
       return hash.slice(0, 26);
     }
 
-    // generate activation code per Java: SHA1(ri|st|wt) -> first 18 hex uppercase -> grouped 4-4-4-4-2
+    // 生成激活码（与 Java 算法一致）：SHA1(ri|st|wt) -> 取前 18 个 hex -> 分组 4-4-4-4-2
     async function generateActivationCodeFromRi(ri, st, wt){
       const combined = (ri || '') + '|' + (st || '') + '|' + (wt || '');
       const h = await sha1HexUpper(combined);
@@ -87,7 +83,7 @@
       return groups.join(' ').trim();
     }
 
-    // generate random numeric wt of specified digits (default 2)
+    // 随机 wt（默认两位）
     function genRandomWt(digits = 2){
       let s = '';
       for(let i=0;i<digits;i++) s += Math.floor(Math.random()*10).toString();
@@ -96,34 +92,34 @@
 
     (async function(){
       const params = new URLSearchParams(window.location.search);
-      const sn = (params.get('sn') || '').trim();
-      const code = (params.get('code') || '').trim();
-      const riParam = (params.get('ri') || '').trim();
-      const st = (params.get('st') || '00').trim();
-      let wt = (params.get('wt') || '').trim();
 
-      // if wt not provided, generate 2-digit random wt (same as Java example)
+      // 支持大小写参数名，优先取小写
+      function getParam(keys){
+        for(const k of keys){
+          if(params.has(k)) return params.get(k);
+        }
+        return null;
+      }
+
+      const sn = (getParam(['sn','SN','Sn']) || '').trim();
+      const code = (getParam(['code','CODE','Code']) || '').trim();
+      const riParam = (getParam(['ri','RI','Ri']) || '').trim();
+      const st = (getParam(['st','ST','St']) || '00').trim();
+      let wt = (getParam(['wt','WT','Wt']) || '').trim();
       if(!wt) wt = genRandomWt(2);
 
-      // elements
       const activationEl = document.getElementById('activationCode');
       const qrContainer = document.getElementById('qrContainer');
       const snEl = document.getElementById('snDisplay');
       const codeEl = document.getElementById('codeDisplay');
-      const riEl = document.getElementById('riDisplay');
-      const stEl = document.getElementById('stDisplay');
-      const wtEl = document.getElementById('wtDisplay');
       const tsEl = document.getElementById('tsDisplay');
 
-      // show ts
+      // 显示时间与 sn/code（如果不存在显示 '-'）
       tsEl.textContent = formatDate(new Date());
-      stEl.textContent = st;
-      wtEl.textContent = wt;
+      snEl.textContent = sn || '-';
+      codeEl.textContent = code || '-';
 
-      // Determine ri:
-      // Priority: if ri param present -> use it
-      // else if sn and code present -> compute ri = SHA256(sn|code).slice(0,26)
-      // else error message
+      // 决定 ri：优先使用 ri 参数，否则如果 sn+code 都存在则计算 ri；否则没有 ri
       let ri = '';
       if(riParam){
         ri = riParam.toUpperCase();
@@ -132,70 +128,54 @@
           ri = await generateRiFromSnCode(sn, code);
         } catch(e){
           console.error('生成 RI 出错', e);
-          activationEl.textContent = '生成 RI 出错';
-          return;
         }
+      }
+
+      // 如果没有 ri 则无法生成激活码（显示为 '-')
+      if(!ri){
+        activationEl.textContent = '-';
       } else {
-        activationEl.textContent = '缺少参数：请传入 sn 和 code 或直接传 ri';
-        // still show sn/code if present
-        snEl.textContent = sn || '-';
-        codeEl.textContent = code || '-';
-        riEl.textContent = '-';
-        return;
+        // 生成激活码（内部使用 st/wt），但不在页面显示 ri/st/wt
+        try {
+          const act = await generateActivationCodeFromRi(ri, st, wt);
+          activationEl.textContent = act;
+
+          // 点击复制
+          activationEl.style.cursor = 'pointer';
+          activationEl.title = '点击复制激活码';
+          activationEl.addEventListener('click', function(){
+            navigator.clipboard?.writeText(act).then(() => {
+              const old = this.textContent;
+              this.textContent = '已复制: ' + act;
+              setTimeout(()=> this.textContent = act, 1500);
+            }).catch(()=>{});
+          });
+        } catch(e){
+          console.error('生成激活码出错', e);
+          activationEl.textContent = '-';
+        }
       }
 
-      // update displays
-      snEl.textContent = sn || '-';
-      codeEl.textContent = code || '-';
-      riEl.textContent = ri;
-
-      // generate activation code
-      let activationCode = '';
-      try {
-        activationCode = await generateActivationCodeFromRi(ri, st, wt);
-      } catch(e){
-        console.error('生成激活码出错', e);
-        activationEl.textContent = '生成激活码出错';
-        return;
-      }
-
-      activationEl.textContent = activationCode;
-
-      // Click to copy activation code
-      activationEl.style.cursor = 'pointer';
-      activationEl.title = '点击复制激活码';
-      activationEl.addEventListener('click', function(){
-        navigator.clipboard?.writeText(activationCode).then(()=> {
-          const old = this.textContent;
-          this.textContent = '已复制: ' + activationCode;
-          setTimeout(()=> this.textContent = activationCode, 1500);
-        }).catch(()=>{});
-      });
-
-      // Build QR pointing back to this page with the parameters used.
-      // Prefer to include sn & code when those were used (so scanning reproduces same ri),
-      // or include ri when ri param was used.
-      let url = new URL(window.location.href);
-      // Rebuild query to include sn/code/ri/st/wt explicitly to ensure reproducibility
+      // 构建 QR：优先在二维码中包含 sn & code（若存在），否则包含 ri（若存在）；同时确保包含 st 和 wt 以可复现激活码
+      const url = new URL(window.location.href);
       const newParams = new URLSearchParams();
       if(sn) newParams.set('sn', sn);
       if(code) newParams.set('code', code);
-      if(riParam) newParams.set('ri', riParam); // preserve original ri param if provided
+      if(!sn && !code && ri) newParams.set('ri', ri); // include ri only if sn/code not present
       newParams.set('st', st);
       newParams.set('wt', wt);
       url.search = newParams.toString();
 
-      // Use qrserver API to generate QR image (size 300x300). You can change to your own QR generator if needed.
+      // 生成并显示二维码（使用 qrserver 免费 API）
       const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(url.toString());
       const img = document.createElement('img');
       img.src = qrUrl;
       img.alt = 'QR';
-      img.width = 200;
-      img.height = 200;
+      img.width = 240;
+      img.height = 240;
       qrContainer.appendChild(img);
 
-      // Also update the page URL shown in console for debugging
-      console.log('Page URL used for QR:', url.toString());
+      console.log('QR points to:', url.toString());
     })();
   </script>
 </body>
