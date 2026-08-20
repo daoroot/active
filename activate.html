@@ -36,146 +36,201 @@
   </div>
 
   <script>
-    // 格式化时间
+    // 与 Java 端一致的常量
+    const VERSION = 0xA0;
+    const K1 = [0x9E,0xCF,0x40,0x02]; // 9E CF 40 02
+    const K2 = [0xE4,0x50,0x8F,0x97]; // E4 50 8F 97
+
+    function pad2(n){ return String(n).padStart(2,'0'); }
     function formatDate(d){
-      const pad = n => String(n).padStart(2,'0');
-      return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+      return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
     }
 
-    // bytes -> hex uppercase
-    function bytesToHexUpper(bytes){
-      return Array.from(new Uint8Array(bytes)).map(b => b.toString(16).padStart(2,'0')).join('').toUpperCase();
+    function hexToBytes(hex){
+      const b = new Uint8Array(hex.length/2);
+      for(let i=0;i<b.length;i++) b[i] = parseInt(hex.substr(i*2,2),16);
+      return b;
+    }
+    function bytesToHexUpper(arr){
+      return Array.from(arr).map(x => ('0' + (x & 0xFF).toString(16)).slice(-2)).join('').toUpperCase();
+    }
+    function bytesToUint32BE(arr, off){
+      return ((arr[off]&0xFF) << 24) | ((arr[off+1]&0xFF) << 16) | ((arr[off+2]&0xFF) << 8) | (arr[off+3]&0xFF);
+    }
+    function intTo4BytesBE(i){
+      return new Uint8Array([(i>>24)&0xFF,(i>>16)&0xFF,(i>>8)&0xFF,i&0xFF]);
     }
 
-    // SHA-256 hex uppercase
-    async function sha256HexUpper(str){
-      const enc = new TextEncoder().encode(str);
-      const digest = await crypto.subtle.digest('SHA-256', enc);
-      return bytesToHexUpper(digest);
+    // CRC32 (JS implementation)
+    function crc32(buf) {
+      // buf: Uint8Array
+      let table = crc32.table;
+      if (!table) {
+        table = crc32.table = new Uint32Array(256);
+        for (let i=0;i<256;i++){
+          let c = i;
+          for (let k=0;k<8;k++){
+            c = ((c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1));
+          }
+          table[i] = c >>> 0;
+        }
+      }
+      let crc = 0xFFFFFFFF;
+      for (let i = 0; i < buf.length; i++){
+        crc = (crc >>> 8) ^ table[(crc ^ buf[i]) & 0xFF];
+      }
+      return (crc ^ 0xFFFFFFFF) >>> 0;
     }
 
-    // SHA-1 hex uppercase
     async function sha1HexUpper(str){
       const enc = new TextEncoder().encode(str);
       const digest = await crypto.subtle.digest('SHA-1', enc);
-      return bytesToHexUpper(digest);
+      return bytesToHexUpper(new Uint8Array(digest));
     }
 
-    // 生成 ri（与 Java 算法一致）：SHA256(sn + '|' + code) 的前 26 个 hex（大写）
-    async function generateRiFromSnCode(sn, code){
-      const combined = (sn || '') + '|' + (code || '');
-      const hash = await sha256HexUpper(combined);
-      return hash.slice(0, 26);
+    // parse ri hex -> {sn, code, okChecksum}
+    function parseRiHex(riHex){
+      if (!riHex) return null;
+      const h = riHex.trim();
+      if (h.length !== 26) return null;
+      const b = hexToBytes(h);
+      if (b.length !== 13) return null;
+      const ver = b[0];
+      const ri_sn = b.slice(1,5);
+      const ri_code = b.slice(5,9);
+      const cs = b.slice(9,13);
+
+      // undo xor
+      const snb = new Uint8Array(4), codeb = new Uint8Array(4);
+      for (let i=0;i<4;i++){
+        snb[i] = ri_sn[i] ^ K1[i];
+        codeb[i] = ri_code[i] ^ K2[i];
+      }
+      const sn = bytesToUint32BE(snb,0) >>> 0;
+      const code = bytesToUint32BE(codeb,0) >>> 0;
+
+      // checksum verify: CRC32 of first 9 bytes (version + ri_sn + ri_code)
+      const prefix = b.slice(0,9);
+      const calcCrc = crc32(prefix);
+      const csVal = ((cs[0]&0xFF)<<24)|((cs[1]&0xFF)<<16)|((cs[2]&0xFF)<<8)|(cs[3]&0xFF);
+      const ok = (calcCrc >>> 0) === (csVal >>> 0);
+
+      return { sn: String(sn), code: String(code), okChecksum: ok };
     }
 
-    // 生成激活码（与 Java 算法一致）：SHA1(ri|st|wt) -> 取前 18 个 hex -> 分组 4-4-4-4-2
-    async function generateActivationCodeFromRi(ri, st, wt){
-      const combined = (ri || '') + '|' + (st || '') + '|' + (wt || '');
-      const h = await sha1HexUpper(combined);
-      const code18 = h.slice(0, 18);
-      const groups = [
-        code18.slice(0,4),
-        code18.slice(4,8),
-        code18.slice(8,12),
-        code18.slice(12,16),
-        code18.slice(16,18)
-      ];
-      return groups.join(' ').trim();
-    }
-
-    // 随机 wt（默认两位）
-    function genRandomWt(digits = 2){
-      let s = '';
-      for(let i=0;i<digits;i++) s += Math.floor(Math.random()*10).toString();
-      return s;
+    // generate ri from sn & code (same logic as Java)
+    function generateRiFromSnCode(snStr, codeStr){
+      const sn = Number(snStr) >>> 0;
+      const code = Number(codeStr) >>> 0;
+      const out = new Uint8Array(13);
+      out[0] = VERSION;
+      const snBytes = intTo4BytesBE(sn);
+      const codeBytes = intTo4BytesBE(code);
+      for (let i=0;i<4;i++){
+        out[1+i] = snBytes[i] ^ K1[i];
+        out[5+i] = codeBytes[i] ^ K2[i];
+      }
+      // checksum on first 9 bytes
+      const prefix = out.slice(0,9);
+      const crcVal = crc32(prefix);
+      out[9]  = (crcVal >>> 24) & 0xFF;
+      out[10] = (crcVal >>> 16) & 0xFF;
+      out[11] = (crcVal >>> 8) & 0xFF;
+      out[12] = crcVal & 0xFF;
+      return bytesToHexUpper(out);
     }
 
     (async function(){
       const params = new URLSearchParams(window.location.search);
 
-      // 支持大小写参数名，优先取小写
       function getParam(keys){
-        for(const k of keys){
-          if(params.has(k)) return params.get(k);
-        }
+        for (const k of keys) if (params.has(k)) return params.get(k);
         return null;
       }
 
-      const sn = (getParam(['sn','SN','Sn']) || '').trim();
-      const code = (getParam(['code','CODE','Code']) || '').trim();
+      const snParam = (getParam(['sn','SN','Sn']) || '').trim();
+      const codeParam = (getParam(['code','CODE','Code']) || '').trim();
       const riParam = (getParam(['ri','RI','Ri']) || '').trim();
       const st = (getParam(['st','ST','St']) || '00').trim();
       let wt = (getParam(['wt','WT','Wt']) || '').trim();
-      if(!wt) wt = genRandomWt(2);
+      if (!wt) {
+        // generate default 2-digit random
+        wt = String(Math.floor(Math.random()*90)+10).slice(-2);
+      }
 
-      const activationEl = document.getElementById('activationCode');
-      const qrContainer = document.getElementById('qrContainer');
       const snEl = document.getElementById('snDisplay');
       const codeEl = document.getElementById('codeDisplay');
       const tsEl = document.getElementById('tsDisplay');
+      const activationEl = document.getElementById('activationCode');
+      const qrContainer = document.getElementById('qrContainer');
 
-      // 显示时间与 sn/code（如果不存在显示 '-'）
       tsEl.textContent = formatDate(new Date());
-      snEl.textContent = sn || '-';
-      codeEl.textContent = code || '-';
 
-      // 决定 ri：优先使用 ri 参数，否则如果 sn+code 都存在则计算 ri；否则没有 ri
-      let ri = '';
-      if(riParam){
-        ri = riParam.toUpperCase();
-      } else if(sn && code){
-        try {
-          ri = await generateRiFromSnCode(sn, code);
-        } catch(e){
-          console.error('生成 RI 出错', e);
+      snEl.textContent = snParam || '-';
+      codeEl.textContent = codeParam || '-';
+
+      // determine ri: if riParam present use it, else if sn+code present generate ri, else no ri
+      let riUsed = '';
+      if (riParam) {
+        riUsed = riParam.toUpperCase();
+        // try decode to show sn/code if possible
+        const decoded = parseRiHex(riUsed);
+        if (decoded) {
+          snEl.textContent = decoded.sn || snEl.textContent;
+          codeEl.textContent = decoded.code || codeEl.textContent;
+          if (!decoded.okChecksum) console.warn('RI checksum mismatch for', riUsed);
         }
+      } else if (snParam && codeParam) {
+        // generate ri from sn/code
+        riUsed = generateRiFromSnCode(snParam, codeParam);
+      } else {
+        riUsed = '';
       }
 
-      // 如果没有 ri 则无法生成激活码（显示为 '-')
-      if(!ri){
+      // if no ri -> show '-' activation
+      if (!riUsed) {
         activationEl.textContent = '-';
       } else {
-        // 生成激活码（内部使用 st/wt），但不在页面显示 ri/st/wt
-        try {
-          const act = await generateActivationCodeFromRi(ri, st, wt);
-          activationEl.textContent = act;
+        // activation = SHA1(ri|st|wt) first 18 hex uppercase grouped 4-4-4-4-2
+        const sha1hex = await sha1HexUpper(riUsed + '|' + st + '|' + wt);
+        const code18 = sha1hex.slice(0,18);
+        const g = [
+          code18.slice(0,4),
+          code18.slice(4,8),
+          code18.slice(8,12),
+          code18.slice(12,16),
+          code18.slice(16,18)
+        ].join(' ').trim();
+        activationEl.textContent = g;
 
-          // 点击复制
-          activationEl.style.cursor = 'pointer';
-          activationEl.title = '点击复制激活码';
-          activationEl.addEventListener('click', function(){
-            navigator.clipboard?.writeText(act).then(() => {
-              const old = this.textContent;
-              this.textContent = '已复制: ' + act;
-              setTimeout(()=> this.textContent = act, 1500);
-            }).catch(()=>{});
-          });
-        } catch(e){
-          console.error('生成激活码出错', e);
-          activationEl.textContent = '-';
-        }
+        activationEl.style.cursor = 'pointer';
+        activationEl.title = '点击复制激活码';
+        activationEl.addEventListener('click', function(){
+          navigator.clipboard?.writeText(g).then(()=> {
+            const old = this.textContent;
+            this.textContent = '已复制: ' + g;
+            setTimeout(()=> this.textContent = g, 1500);
+          }).catch(()=>{});
+        });
+
+        // build QR: include sn+code if available (preferred), otherwise include ri; always include st & wt
+        const url = new URL(window.location.href);
+        const newP = new URLSearchParams();
+        if (snParam) newP.set('sn', snParam);
+        if (codeParam) newP.set('code', codeParam);
+        if (!snParam && !codeParam && riUsed) newP.set('ri', riUsed);
+        newP.set('st', st);
+        newP.set('wt', wt);
+        url.search = newP.toString();
+
+        const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(url.toString());
+        const img = document.createElement('img');
+        img.src = qrUrl;
+        img.alt = 'QR';
+        img.width = 240; img.height = 240;
+        qrContainer.appendChild(img);
+        console.log('QR points to:', url.toString());
       }
-
-      // 构建 QR：优先在二维码中包含 sn & code（若存在），否则包含 ri（若存在）；同时确保包含 st 和 wt 以可复现激活码
-      const url = new URL(window.location.href);
-      const newParams = new URLSearchParams();
-      if(sn) newParams.set('sn', sn);
-      if(code) newParams.set('code', code);
-      if(!sn && !code && ri) newParams.set('ri', ri); // include ri only if sn/code not present
-      newParams.set('st', st);
-      newParams.set('wt', wt);
-      url.search = newParams.toString();
-
-      // 生成并显示二维码（使用 qrserver 免费 API）
-      const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(url.toString());
-      const img = document.createElement('img');
-      img.src = qrUrl;
-      img.alt = 'QR';
-      img.width = 240;
-      img.height = 240;
-      qrContainer.appendChild(img);
-
-      console.log('QR points to:', url.toString());
     })();
   </script>
 </body>
