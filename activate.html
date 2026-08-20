@@ -7,87 +7,26 @@
   <style>
     :root{
       --bg:#ffffff;
-      --card-bg: #ffffff;
-      --blue: #1e88e5; /* 激活码蓝 */
-      --muted: #bfbfbf; /* 灰色文字 */
+      --blue: #1e88e5;
+      --muted: #bfbfbf;
       --dash: #e6e6e6;
       --title-color: #222;
       --max-width: 420px;
     }
-    html,body{height:100%;margin:0;background:var(--bg);font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue","Noto Sans","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;color:var(--title-color)}
-    .page{
-      min-height:100%;
-      display:flex;
-      flex-direction:column;
-      align-items:stretch;
-    }
-
-    /* 顶部空白区域和虚线 */
-    .top-space{
-      height:60px; /* 保持和示例上方留白相近 */
-      background:linear-gradient(#fafafa,#fafafa);
-    }
+    html,body{height:100%;margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue","Noto Sans","PingFang SC","Microsoft YaHei",sans-serif;color:var(--title-color)}
+    .page{min-height:100%;display:flex;flex-direction:column;align-items:stretch}
+    .top-space{height:60px;background:linear-gradient(#fafafa,#fafafa)}
     .sep{border-top:1px dashed var(--dash);margin:0 16px}
-
-    /* 中央卡片容器，宽度固定，居中 */
-    .center {
-      display:flex;
-      justify-content:center;
-      align-items:flex-start;
-      padding: 18px 16px;
-    }
-    .card {
-      width:100%;
-      max-width:var(--max-width);
-      text-align:center;
-      padding:28px 12px 36px;
-      background:var(--card-bg);
-      box-sizing:border-box;
-      margin:0 auto;
-    }
-
-    .title{
-      font-size:20px;
-      color:var(--title-color);
-      margin:0 0 12px;
-      font-weight:500;
-    }
-
-    /* 激活码样式（大号蓝色） */
-    .activation{
-      color:var(--blue);
-      font-weight:700;
-      font-size:44px;
-      letter-spacing:2px;
-      margin:8px 0 12px;
-      line-height:1;
-      word-break:break-word;
-    }
-
+    .center{display:flex;justify-content:center;align-items:flex-start;padding:18px 16px}
+    .card{width:100%;max-width:var(--max-width);text-align:center;padding:28px 12px 36px;margin:0 auto}
+    .title{font-size:20px;color:var(--title-color);margin:0 0 12px;font-weight:500}
+    .activation{color:var(--blue);font-weight:700;font-size:44px;letter-spacing:2px;margin:8px 0 12px;line-height:1;word-break:break-word}
     .hint{color:#9e9e9e;font-size:13px;margin-bottom:10px}
-
-    /* 二维码 */
-    .qr-wrap{margin:6px 0 18px; display:flex; justify-content:center}
-    .qr-wrap img{width:200px;height:200px; display:block}
-
-    /* 三行灰色信息 */
-    .meta{
-      color:var(--muted);
-      font-size:14px;
-      line-height:2.0;
-      margin-top:6px;
-    }
-
-    .bottom-space{
-      height:180px; /* 保持底部白色空间 */
-    }
-
-    /* 适应小屏幕 */
-    @media (max-width:420px){
-      .activation{font-size:36px}
-      .qr-wrap img{width:180px;height:180px}
-      .card{padding:22px 10px 30px}
-    }
+    .qr-wrap{margin:6px 0 18px;display:flex;justify-content:center}
+    .qr-wrap img{width:200px;height:200px;display:block}
+    .meta{color:var(--muted);font-size:14px;line-height:2.0;margin-top:6px}
+    .bottom-space{height:180px}
+    @media (max-width:420px){.activation{font-size:36px}.qr-wrap img{width:180px;height:180px}.card{padding:22px 10px 30px}}
   </style>
 </head>
 <body>
@@ -117,20 +56,11 @@
   </div>
 
   <script>
-    /********************************************************************
-     * 前端算法与 Java 保持一致（可逆 ri 实现）
-     * - 若传入 ri 参数（26 hex），页面尝试解析回 sn & code 并显示
-     * - 若传入 sn 与 code，则生成 ri（可互相验证）
-     * - 最终生成激活码：SHA1(ri|st|wt) -> 取前18 hex -> 分组 4-4-4-4-2
-     * - 页面不显示 ri/st/wt，二维码中优先包含 sn+code（若可用），否则包含 ri；同时包含 st/wt 以便复现
-     ********************************************************************/
-
-    // 常量（与 Java 端保持一致）
+    // 常量与前端/Java 算法保持一致（可逆 ri）
     const VERSION = 0xA0;
-    const K1 = [0x9E,0xCF,0x40,0x02]; // 9E CF 40 02
-    const K2 = [0xE4,0x50,0x8F,0x97]; // E4 50 8F 97
+    const K1 = [0x9E,0xCF,0x40,0x02];
+    const K2 = [0xE4,0x50,0x8F,0x97];
 
-    // DOM
     const activationEl = document.getElementById('activationCode');
     const qrContainer = document.getElementById('qrContainer');
     const snEl = document.getElementById('snDisplay');
@@ -138,172 +68,102 @@
     const tsEl = document.getElementById('tsDisplay');
 
     function pad2(n){ return String(n).padStart(2,'0'); }
-    function formatDate(d){
-      return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
-    }
+    function formatDate(d){ return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds()); }
+    function hexToBytes(hex){ const out=new Uint8Array(hex.length/2); for(let i=0;i<out.length;i++) out[i]=parseInt(hex.substr(i*2,2),16); return out; }
+    function bytesToHexUpper(arr){ return Array.from(arr).map(x=>('0'+(x&0xFF).toString(16)).slice(-2)).join('').toUpperCase(); }
+    function bytesToUint32BE(arr,off){ return ((arr[off]&0xFF)<<24)|((arr[off+1]&0xFF)<<16)|((arr[off+2]&0xFF)<<8)|(arr[off+3]&0xFF); }
+    function intTo4BytesBE(i){ return new Uint8Array([(i>>24)&0xFF,(i>>16)&0xFF,(i>>8)&0xFF,i&0xFF]); }
 
-    function hexToBytes(hex){
-      const out = new Uint8Array(hex.length/2);
-      for (let i=0;i<out.length;i++) out[i] = parseInt(hex.substr(i*2,2),16);
-      return out;
-    }
-    function bytesToHexUpper(arr){
-      return Array.from(arr).map(x => ('0' + (x & 0xFF).toString(16)).slice(-2)).join('').toUpperCase();
-    }
-    function bytesToUint32BE(arr, off){
-      return ((arr[off]&0xFF) << 24) | ((arr[off+1]&0xFF) << 16) | ((arr[off+2]&0xFF) << 8) | (arr[off+3]&0xFF);
-    }
-    function intTo4BytesBE(i){
-      return new Uint8Array([(i>>24)&0xFF,(i>>16)&0xFF,(i>>8)&0xFF,i&0xFF]);
-    }
-
-    // CRC32 实现（用于校验）
-    function crc32(buf) {
+    function crc32(buf){
       let table = crc32.table;
-      if (!table) {
-        table = crc32.table = new Uint32Array(256);
-        for (let i=0;i<256;i++){
-          let c = i;
-          for (let k=0;k<8;k++){
-            c = ((c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1));
-          }
-          table[i] = c >>> 0;
-        }
-      }
+      if(!table){ table = crc32.table = new Uint32Array(256); for(let i=0;i<256;i++){ let c=i; for(let k=0;k<8;k++){ c = ((c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1)); } table[i]=c>>>0; } }
       let crc = 0xFFFFFFFF;
-      for (let i = 0; i < buf.length; i++){
-        crc = (crc >>> 8) ^ table[(crc ^ buf[i]) & 0xFF];
-      }
+      for(let i=0;i<buf.length;i++) crc = (crc >>> 8) ^ table[(crc ^ buf[i]) & 0xFF];
       return (crc ^ 0xFFFFFFFF) >>> 0;
     }
 
-    // SHA-1 hex UPPER
-    async function sha1HexUpper(str){
-      const enc = new TextEncoder().encode(str);
-      const digest = await crypto.subtle.digest('SHA-1', enc);
-      return bytesToHexUpper(new Uint8Array(digest));
-    }
+    async function sha1HexUpper(str){ const enc=new TextEncoder().encode(str); const digest=await crypto.subtle.digest('SHA-1',enc); return bytesToHexUpper(new Uint8Array(digest)); }
 
-    // 解析 ri -> {sn, code, okChecksum}
     function parseRiHex(riHex){
-      if (!riHex) return null;
-      const h = riHex.trim();
-      if (h.length !== 26) return null;
-      const b = hexToBytes(h);
-      if (b.length !== 13) return null;
-      const ri_sn = b.slice(1,5);
-      const ri_code = b.slice(5,9);
-      const cs = b.slice(9,13);
-      const snb = new Uint8Array(4), codeb = new Uint8Array(4);
-      for (let i=0;i<4;i++){
-        snb[i] = ri_sn[i] ^ K1[i];
-        codeb[i] = ri_code[i] ^ K2[i];
-      }
-      const sn = bytesToUint32BE(snb,0) >>> 0;
-      const code = bytesToUint32BE(codeb,0) >>> 0;
-      const prefix = b.slice(0,9);
-      const calc = crc32(prefix);
-      const csVal = ((cs[0]&0xFF)<<24)|((cs[1]&0xFF)<<16)|((cs[2]&0xFF)<<8)|(cs[3]&0xFF);
-      const ok = (calc >>> 0) === (csVal >>> 0);
-      return { sn: String(sn), code: String(code), okChecksum: ok };
+      if(!riHex) return null;
+      const h=riHex.trim();
+      if(h.length!==26) return null;
+      const b=hexToBytes(h);
+      if(b.length!==13) return null;
+      const ri_sn=b.slice(1,5), ri_code=b.slice(5,9), cs=b.slice(9,13);
+      const snb=new Uint8Array(4), codeb=new Uint8Array(4);
+      for(let i=0;i<4;i++){ snb[i]=ri_sn[i]^K1[i]; codeb[i]=ri_code[i]^K2[i]; }
+      const sn=bytesToUint32BE(snb,0)>>>0, code=bytesToUint32BE(codeb,0)>>>0;
+      const prefix=b.slice(0,9), calc=crc32(prefix);
+      const csVal=((cs[0]&0xFF)<<24)|((cs[1]&0xFF)<<16)|((cs[2]&0xFF)<<8)|(cs[3]&0xFF);
+      const ok=(calc>>>0)==(csVal>>>0);
+      return { sn:String(sn), code:String(code), okChecksum:ok };
     }
 
-    // generate ri from sn & code
     function generateRiFromSnCode(snStr, codeStr){
-      const sn = Number(snStr) >>> 0;
-      const code = Number(codeStr) >>> 0;
-      const out = new Uint8Array(13);
-      out[0] = VERSION;
-      const snBytes = intTo4BytesBE(sn);
-      const codeBytes = intTo4BytesBE(code);
-      for (let i=0;i<4;i++){
-        out[1+i] = snBytes[i] ^ K1[i];
-        out[5+i] = codeBytes[i] ^ K2[i];
-      }
-      const prefix = out.slice(0,9);
-      const crcVal = crc32(prefix);
-      out[9]  = (crcVal >>> 24) & 0xFF;
-      out[10] = (crcVal >>> 16) & 0xFF;
-      out[11] = (crcVal >>> 8) & 0xFF;
-      out[12] = crcVal & 0xFF;
+      const sn = Number(snStr)>>>0, code = Number(codeStr)>>>0;
+      const out = new Uint8Array(13); out[0]=VERSION;
+      const snBytes=intTo4BytesBE(sn), codeBytes=intTo4BytesBE(code);
+      for(let i=0;i<4;i++){ out[1+i]=snBytes[i]^K1[i]; out[5+i]=codeBytes[i]^K2[i]; }
+      const prefix = out.slice(0,9), crcVal = crc32(prefix);
+      out[9]=(crcVal>>>24)&0xFF; out[10]=(crcVal>>>16)&0xFF; out[11]=(crcVal>>>8)&0xFF; out[12]=crcVal&0xFF;
       return bytesToHexUpper(out);
     }
 
-    // 读取参数（大小写兼容）
     function getParam(keys){
-      const params = new URLSearchParams(window.location.search);
-      for (const k of keys) if (params.has(k)) return params.get(k);
+      const params=new URLSearchParams(window.location.search);
+      for(const k of keys) if(params.has(k)) return params.get(k);
       return null;
     }
 
     (async function(){
-      const snParam = (getParam(['sn','SN','Sn']) || '').trim();
-      const codeParam = (getParam(['code','CODE','Code']) || '').trim();
-      const riParam = (getParam(['ri','RI','Ri']) || '').trim();
-      const st = (getParam(['st','ST','St']) || '00').trim();
-      let wt = (getParam(['wt','WT','Wt']) || '').trim();
-      if (!wt) { wt = String(Math.floor(Math.random()*90)+10).slice(-2); } // 2-digit default
+      const snParam = (getParam(['sn','SN','Sn'])||'').trim();
+      const codeParam = (getParam(['code','CODE','Code'])||'').trim();
+      const riParam = (getParam(['ri','RI','Ri'])||'').trim();
+      const st = (getParam(['st','ST','St'])||'00').trim();
+      let wt = (getParam(['wt','WT','Wt'])||'').trim();
+      if(!wt) wt = String(Math.floor(Math.random()*90)+10).slice(-2);
 
-      // set timestamp and default displays
       tsEl.textContent = formatDate(new Date());
       snEl.textContent = snParam || '-';
       codeEl.textContent = codeParam || '-';
 
-      // determine riUsed and possibly decode sn/code from ri
       let riUsed = '';
-      if (riParam) {
+      if(riParam){
         riUsed = riParam.toUpperCase();
         const decoded = parseRiHex(riUsed);
-        if (decoded) {
-          if (decoded.sn) snEl.textContent = decoded.sn;
-          if (decoded.code) codeEl.textContent = decoded.code;
-          if (!decoded.okChecksum) console.warn('RI checksum mismatch for', riUsed);
-        }
-      } else if (snParam && codeParam) {
+        if(decoded){ if(decoded.sn) snEl.textContent = decoded.sn; if(decoded.code) codeEl.textContent = decoded.code; if(!decoded.okChecksum) console.warn('RI checksum mismatch for', riUsed); }
+      } else if(snParam && codeParam){
         riUsed = generateRiFromSnCode(snParam, codeParam);
       } else {
         riUsed = '';
       }
 
-      // if no ri then show '-' activation
-      if (!riUsed) {
+      // clear previous QR
+      qrContainer.innerHTML = '';
+
+      if(!riUsed){
         activationEl.textContent = '-';
       } else {
         const sha1hex = await sha1HexUpper(riUsed + '|' + st + '|' + wt);
         const code18 = sha1hex.slice(0,18);
-        const groups = [
-          code18.slice(0,4),
-          code18.slice(4,8),
-          code18.slice(8,12),
-          code18.slice(12,16),
-          code18.slice(16,18)
-        ];
+        const groups = [ code18.slice(0,4), code18.slice(4,8), code18.slice(8,12), code18.slice(12,16), code18.slice(16,18) ];
         const formatted = groups.join(' ').trim();
         activationEl.textContent = formatted;
 
         activationEl.style.cursor = 'pointer';
         activationEl.addEventListener('click', function(){
           navigator.clipboard?.writeText(formatted).then(()=> {
-            const old = this.textContent;
-            this.textContent = '已复制: ' + formatted;
+            const old = this.textContent; this.textContent = '已复制: ' + formatted;
             setTimeout(()=> this.textContent = formatted, 1500);
           }).catch(()=>{});
         });
 
-        // Build QR: prefer sn+code if available; else include ri
-        const url = new URL(window.location.href);
-        const newP = new URLSearchParams();
-        if (snParam) newP.set('sn', snParam);
-        if (codeParam) newP.set('code', codeParam);
-        if (!snParam && !codeParam && riUsed) newP.set('ri', riUsed);
-        newP.set('st', st);
-        newP.set('wt', wt);
-        url.search = newP.toString();
-
-        const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(url.toString());
+        // QR now encodes the activation code text itself (per request)
+        const qrPayload = formatted; // activation code string
+        const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(qrPayload);
         const img = document.createElement('img');
-        img.src = qrUrl;
-        img.alt = 'QR';
+        img.src = qrUrl; img.alt = 'QR'; img.width = 240; img.height = 240;
         qrContainer.appendChild(img);
       }
     })();
